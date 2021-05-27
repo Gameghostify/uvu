@@ -29,6 +29,7 @@ if (isNode = typeof process < 'u' && typeof process.stdout < 'u') {
 }
 
 globalThis.UVU_QUEUE = globalThis.UVU_QUEUE || [];
+globalThis.UVU_CTX = globalThis.UVU_CTX || context();
 isCLI = isCLI || !!globalThis.UVU_DEFER;
 isCLI || UVU_QUEUE.push([null]);
 
@@ -118,11 +119,21 @@ function setup(ctx, name = '') {
 export const suite = (name = '', state = {}) => setup(context(state), name);
 export const test = suite();
 
+export const before = hook(UVU_CTX, "before");
+export const after = hook(UVU_CTX, "after");
+export const beforeEach = hook(UVU_CTX, "bEach");
+export const afterEach = hook(UVU_CTX, "aEach");
+
 export async function exec(bail) {
 	let timer = hrtime();
 	let done=0, total=0, skips=0, code=0;
+	let hook, { before, after, bEach, aEach } = UVU_CTX;
+
+	for (hook of before) await hook();
 
 	for (let group of UVU_QUEUE) {
+		for (hook of bEach) await hook();
+
 		if (total) write('\n');
 
 		let name = group.shift();
@@ -133,10 +144,17 @@ export async function exec(bail) {
 			total += max; done += ran; skips += skip;
 			if (errs.length) {
 				write('\n' + errs + '\n'); code=1;
-				if (bail) return isNode && process.exit(1);
+				if (bail) {
+					for (hook of after) await hook();
+					return isNode && process.exit(1);
+				}
 			}
 		}
+
+		for (hook of aEach) await hook();
 	}
+
+	for (hook of after) await hook();
 
 	write('\n  Total:     ' + total);
 	write((code ? kleur.red : kleur.green)('\n  Passed:    ' + done));
